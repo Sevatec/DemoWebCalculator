@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="tomcat-demo" default="war" basedir=".">	
+	<property file="build.properties" />
+	<path id="catalina-ant-classpath">
+	    <fileset dir="${catalina-ant-dir}">
+	        <include name="catalina-ant.jar"/>
+	        <include name="tomcat-coyote.jar"/>
+	        <include name="tomcat-util.jar"/>
+	        <include name="tomcat-juli.jar"/>
+	    </fileset>
+	</path>
+	<path id="static-analysis-classpath">
+		<fileset dir="Common">
+			<include name="findbugs-ant.jar"/>
+		</fileset>
+	</path>
+	<path id="project-classpath">
+			<fileset dir="WebContent/WEB-INF/lib" includes="*.jar" />
+			<fileset dir="${tomcat-home}/bin" includes="*.jar" />
+			<fileset dir="${tomcat-home}/lib" includes="*.jar" />
+			<fileset dir="Common" includes="*.jar" />
+	</path>
+	<path id="tests-classpath">
+		<pathelement location="build/classes" />
+		<!--<fileset dir="Common">
+			<include name="**/*.jar" />
+		</fileset>-->
+	</path>
+	<path id="pmd-classpath">
+		<fileset dir="C:\Software Installations\PMD\pmd-bin-5.2.3">
+			<include name="lib/*.jar"/>    <!-- also includes pmd's file, which has all the rulesets I need. -->
+		</fileset>
+	</path>
+	<property name="war-file-name" value="${project-name}.war" />
+	<property name="source-directory" value="src" />
+	<property name="classes-directory" value="build/classes" />
+	<!--<property name="classes-directory" value="classes" />-->
+	<property name="web-directory" value="WebContent" />
+	<property name="web-xml-file" value="WebContent/WEB-INF/web.xml" />
+	<property name="common-directory" value="Common" />
+	<tstamp prefix="build-info">
+		<format property="current-date" pattern="d-MMMM-yyyy" locale="en" />
+		<format property="current-time" pattern="hh:mm:ss a z" locale="en" />
+		<format property="year-month-day" pattern="yyyy-MM-dd" locale="en" />
+	</tstamp>
+	<property name="build-directory" value="build" />
+
+	<property name="ftp-remotedir" value="uploaded-wars/${project-name}/${build-info.year-month-day}" />
+
+	<taskdef name="start" classname="org.apache.catalina.ant.StartTask" classpathref="catalina-ant-classpath"/>
+	<taskdef name="stop" classname="org.apache.catalina.ant.StopTask" classpathref="catalina-ant-classpath"/>
+	<taskdef name="deploy" classname="org.apache.catalina.ant.DeployTask" classpathref="catalina-ant-classpath"/>
+	<taskdef name="undeploy" classname="org.apache.catalina.ant.UndeployTask" classpathref="catalina-ant-classpath"/>
+	<taskdef name="findbugs" classname="edu.umd.cs.findbugs.anttask.FindBugsTask" classpathref="static-analysis-classpath"/>
+	<taskdef resource="checkstyletask.properties" classpath="${common-directory}/checkstyle-6.4.1-all.jar"/>
+	<taskdef name="pmd" classname="net.sourceforge.pmd.ant.PMDTask">
+	    <classpath>
+	        <fileset dir="Common\pmd-bin-5.2.3">
+	            <include name="lib/*.jar"/>    <!-- also includes pmd's file, which has all the rulesets I need. -->
+	        </fileset>
+	    </classpath>
+	</taskdef>
+	
+	<target name="stop" description="stop application in tomcat">
+		<stop url="${tomcat-manager-url}" username="${tomcat-manager-username}"
+			password="${tomcat-manager-password}" path="/${project-name}" />
+	</target>
+
+	<target name="clean" description="Clean the project">
+	    <delete includeemptydirs="true" quiet="true">
+	      <fileset dir="build" includes="**/*" excludes="**/classes"/>
+	    </delete>
+	</target>
+	
+	<target name="compile">
+		<echo>compiling</echo>
+		<mkdir dir="build/classes"/>
+		<javac srcdir="src" destdir="build/classes" includeantruntime="false" classpathref="project-classpath" />
+	</target>
+	
+	<target name="start" description="start application in tomcat">
+		<start url="${tomcat-manager-url}" username="${tomcat-manager-username}"
+			password="${tomcat-manager-password}" path="/${project-name}" />
+	</target>
+	
+	<target name="undeploy" description="undeploy from tomcat">
+		<undeploy 
+			failonerror="no"
+			url="${tomcat-manager-url}"
+			username="${tomcat-manager-username}"
+			password="${tomcat-manager-password}"
+			path="/${project-name}"
+		/>
+	</target>
+	
+	<target name="deploy" description="deploy to tomcat">
+		<echo>deploying from client</echo>
+		<deploy 
+			url="${tomcat-manager-url}"
+			username="${tomcat-manager-username}"
+			password="${tomcat-manager-password}"
+			path="/${project-name}"
+			war="${build-directory}/${war-file-name}"
+		/>
+		<!--war="file:/projects/workspace/${project-name}/${build-directory}/${war-file-name}"
+		war="${workspace-dir}/${project-name}/${build-directory}/${war-file-name}"-->
+	</target>
+	
+	<target name="war" depends="">
+		<mkdir dir="${build-directory}" />
+		<delete file="${build-directory}/${war-file-name}" />
+		<war warfile="${build-directory}/${war-file-name}" webxml="${web-xml-file}">
+			<classes dir="${classes-directory}" />
+			<fileset dir="${web-directory}">
+				<!-- Need to exclude it since webxml is an attribute of the war tag above -->
+				<exclude name="WEB-INF/web.xml" />
+			</fileset>
+			<manifest>
+				<attribute name="Built-By" value="${builder}" />
+				<attribute name="Built-On" value="${build-info.current-date}" />
+				<attribute name="Built-At" value="${build-info.current-time}" />
+			</manifest>
+		</war>
+	</target>
+
+	<target name="ftp" depends="" description="upload war file to server">
+		<ftp 
+			server="${ftp-server}" remotedir="${ftp-remotedir}"
+			userid="${ftp-userid}" password="${ftp-password}"
+			action="mkdir" verbose="yes">
+		</ftp>
+		<ftp 
+			server="${ftp-server}" remotedir="${ftp-remotedir}"
+			userid="${ftp-userid}" password="${ftp-password}"
+			action="send" verbose="yes" depends="yes">
+			<fileset file="${build-directory}/${war-file-name}" />
+		</ftp>
+	</target>
+
+	<target name="mail-upload-complete">
+		<mail from=""
+		      tolist=""
+		      subject="${war-file-name} was uploaded to the server"
+		      message="The ${war-file-name} file was uploaded to ${ftp-server} in ${ftp-remotedir}"/>
+	</target>
+	
+	<target name="unittest">
+		<junit>
+			<formatter type="xml" usefile="true" />
+			<classpath>
+				<path refid="tests-classpath" />
+				<path refid="project-classpath" />
+			</classpath>
+			<test name="samples.webcalculator.CalculationsTest" />
+		</junit>
+	</target>
+
+	<target name="build-and-ftp" depends="clean,war,ftp,mail-upload-complete" />
+	<target name="compile-build-and-deploy" depends="clean,compile,war,undeploy,deploy" />
+	<target name="build-and-deploy" depends="war,undeploy,deploy" />
+	
+	<property name="findbugs.home" value="C:\Software Installations\FindBugs\findbugs-3.0.1" />
+
+	  <target name="findbugs" depends="">
+	    <findbugs home="${findbugs.home}"
+	              output="xml"
+	              outputFile="FB-samples.webcalculator.xml" >
+	    	<class location="${classes-directory}" />
+	      <!--<class location="${basedir}/bin/bcel.jar" />-->
+	    </findbugs>
+	  </target>
+	
+	<target name="compile-and-findbugs" depends="clean,compile,findbugs"/>
+	
+	<target name="checkstyle"
+	        description="Generates a report of code convention violations.">
+
+	  <checkstyle config="${common-directory}/google_checks.xml"
+	              failOnViolation="false">
+	    <formatter type="xml" tofile="CheckStyle-samples.webcalculator.xml"/>
+	    <fileset dir="${source-directory}" includes="**/*.java"/>
+	  </checkstyle>
+
+	  <!--<style in="CheckStyle-samples.webcalculator.xml" out="CheckStyle-samples.webcalculator.html" style="checkstyle.xsl"/>-->
+
+	</target>
+	
+	<target name="pmd" depends="">
+	    <pmd>
+	        <formatter type="xml" toFile="PMD-samples.webcalculator.xml" toConsole="true"/>
+
+	        <ruleset>rulesets/java/basic.xml</ruleset> <!-- references file in PMD's .jar -->
+
+	        <!-- Files PMD will test. -->       
+	        <fileset dir="${source-directory}">
+	            <include name="**/*.java"/>     <!-- required to avoid firing off .aj errors. This ruleset doesn't support AspectJ. -->
+	        </fileset>
+	    </pmd>
+	</target>
+	
+	<target name="prebuild-tests" depends="checkstyle,pmd" />
+	<target name="compile-and-test" depends="clean,compile,findbugs,unittest" />
+</project>
